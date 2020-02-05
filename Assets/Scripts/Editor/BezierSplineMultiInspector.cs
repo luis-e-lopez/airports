@@ -55,6 +55,27 @@ public class BezierSplineMultiInspector : Editor
             }
         }
 
+        if (GUILayout.Button("Print Progress on Points"))
+        {
+            for (int i = 0; i < bezierSplineMulti.splines.Length; i++)
+            {
+                for (int j = 3; j < bezierSplineMulti.splines[i].ControlPointCount; j += 3) 
+                {
+                    Debug.Log("Spline " + i + " Point " + j + " Progress " + bezierSplineMulti.GetProgressAtControlPoint(i, j));
+                }
+                Debug.Log("Spline " + i + " Count " + bezierSplineMulti.splines[i].ControlPointCount);
+            }
+        }
+
+        if (GUILayout.Button("Print length between two points"))
+        {
+            int splineIndex = 1;
+            int point1Index = 0;
+            int point2Index = 3;
+            float length = bezierSplineMulti.GetSplineLengthBetweenTwoControlPoints(splineIndex, point1Index, point2Index);
+            Debug.Log("Spline " + splineIndex + " Point1 " + point1Index + " Point2 " + point2Index + " Length " + length);
+        }
+
         if (canConnect) 
         {
             bezierSplineMulti.prepareForPossibleConnection(selectedSplineIndex, selectedPointIndex, connectToSplineIndex, connectToPointIndex);

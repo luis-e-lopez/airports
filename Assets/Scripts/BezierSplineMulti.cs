@@ -209,24 +209,43 @@ public class BezierSplineMulti : MonoBehaviour {
             }
         }
 
-        //float progress = 0f;
-        //Vector3 progressPoint = spline.GetPoint(0f);
-        //for (int i = 0; i <= spline.ControlPointCount; i += 3)
-        //{
-        //    Vector3 nextPoint = spline.GetPoint(i);
-        //    float curveLength = 0f;
-        //    float d = Vector3.Distance(progressPoint, nextPoint);
-        //    while(d > 0.02) 
-        //    {
-        //        curveLength += d;
-        //        progress += step;
-        //        progressPoint = spline.GetPoint(progress);
-        //        d = Vector3.Distance(progressPoint, nextPoint);
-        //    }
-
-        //}
-
         return length;
+    }
+
+    public float GetSplineLengthBetweenTwoControlPoints(int splineIndex, int point1Index, int point2Index) 
+    {
+        if (point1Index % 3 != 0 || point2Index % 3 != 0)
+            return -1f;
+
+        float length = 0f;
+        float step = 0.01f;
+        float progress = GetProgressAtControlPoint(splineIndex, point1Index);
+        BezierSpline spline = splines[splineIndex];
+        Vector3 prevPoint = spline.GetPoint(progress);
+        Vector3 controlPoint = spline.GetControlPoint(point2Index);
+        for (float i = progress; i <= 1f; i += step)
+        {
+            Vector3 nextPoint = spline.GetPoint(i);
+            float sLength = Vector3.Distance(prevPoint, nextPoint);
+            length += sLength;
+            prevPoint = nextPoint;
+
+            float d = Vector3.Distance(nextPoint, controlPoint);
+            if (d < 0.02f)
+            {
+                return length;
+            }
+        }
+        return length;
+    }
+
+    public float GetProgressAtControlPoint(int splineIndex, int pointIndex) 
+    {
+        if (pointIndex % 3 != 0)
+            return -1f;
+
+        int cPointCount = splines[splineIndex].ControlPointCount;
+        return (float)pointIndex / ((float)cPointCount - 1);
     }
 
     public void PrintDictionary() 
