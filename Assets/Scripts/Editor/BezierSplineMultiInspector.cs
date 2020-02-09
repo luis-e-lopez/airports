@@ -18,7 +18,7 @@ public class BezierSplineMultiInspector : Editor
 
     private const float handleSize = 0.06f;
     private const float pickSize = 0.08f;
-    private const float connectionDistance = 2.0f;
+    private const float connectionDistance = 1.0f;
     private const float dotsSize = 2.0f;
 
     private static Color[] modeColors = {
@@ -34,7 +34,7 @@ public class BezierSplineMultiInspector : Editor
 
     public override void OnInspectorGUI() 
     {
-
+        bezierSplineMulti = target as BezierSplineMulti;
         EditorGUILayout.PropertyField(m_splines, true);
 
         if (GUILayout.Button("Clear connections"))
@@ -42,9 +42,14 @@ public class BezierSplineMultiInspector : Editor
             bezierSplineMulti.ClearConnections();
         }
 
-        if (GUILayout.Button("Print connections"))
+        if (GUILayout.Button("Print Connections"))
         {
             bezierSplineMulti.PrintDictionary();
+        }
+
+        if (GUILayout.Button("Print Nodes"))
+        {
+            bezierSplineMulti.PrintNodes();
         }
 
         if (GUILayout.Button("Calculate Lengths"))
@@ -78,11 +83,50 @@ public class BezierSplineMultiInspector : Editor
 
         if (canConnect) 
         {
-            bezierSplineMulti.prepareForPossibleConnection(selectedSplineIndex, selectedPointIndex, connectToSplineIndex, connectToPointIndex);
-            ShowConnectionToggle();
+            int nodeIndex = -1;
+            if (bezierSplineMulti.IsPointAlreadyInNode(selectedSplineIndex + "-" + selectedPointIndex, out nodeIndex)) 
+            {
+                ShowNodeConnections(nodeIndex);
+            } 
+            else 
+            {
+                bezierSplineMulti.prepareForPossibleConnection(selectedSplineIndex, selectedPointIndex, connectToSplineIndex, connectToPointIndex);
+                ShowConnectionToggle();
+            }
         }
 
         serializedObject.ApplyModifiedProperties();
+    }
+
+    private void ShowNodeConnections(int nodeIndex) 
+    {
+        List<string> points = bezierSplineMulti.GetAllPointsInNode(nodeIndex);
+        foreach (string key in points) 
+        {
+            string[] indexes = key.Split('-');
+            int splineIndex = Int32.Parse(indexes[0]);
+            int pointIndex = Int32.Parse(indexes[1]);
+
+            bezierSplineMulti.prepareForPossibleConnection(splineIndex, pointIndex, -1, -1);
+            EditorGUI.BeginChangeCheck();
+            bool connect = EditorGUILayout.Toggle("Connected To Node", bezierSplineMulti.Connect);
+            if (EditorGUI.EndChangeCheck())
+            {
+                Undo.RecordObject(bezierSplineMulti, "Toggle Connect " + key);
+                EditorUtility.SetDirty(bezierSplineMulti);
+                bezierSplineMulti.Connect = connect;
+            }
+
+            EditorGUI.BeginChangeCheck();
+            Vector3 point = EditorGUILayout.Vector3Field("Point(" + key + ") In Node(" + nodeIndex + ")", bezierSplineMulti.splines[splineIndex].GetControlPoint(pointIndex));
+            if (EditorGUI.EndChangeCheck())
+            {
+                Undo.RecordObject(bezierSplineMulti, "Point " + pointIndex + ", Spline " + splineIndex);
+                EditorUtility.SetDirty(bezierSplineMulti);
+                //bezierSplineMulti.splines[selectedSplineIndex].SetControlPoint(selectedPointIndex, fromPoint);
+            }
+        }
+
     }
 
     private void ShowConnectionToggle() //(Vector3 fromPoint, Vector3 toPoint) 
@@ -102,7 +146,7 @@ public class BezierSplineMultiInspector : Editor
         {
             Undo.RecordObject(bezierSplineMulti, "Move From Point");
             EditorUtility.SetDirty(bezierSplineMulti);
-            bezierSplineMulti.splines[selectedSplineIndex].SetControlPoint(selectedPointIndex, fromPoint);
+            //bezierSplineMulti.splines[selectedSplineIndex].SetControlPoint(selectedPointIndex, fromPoint);
         }
 
         EditorGUI.BeginChangeCheck();
@@ -111,7 +155,7 @@ public class BezierSplineMultiInspector : Editor
         {
             Undo.RecordObject(bezierSplineMulti, "Move To Point");
             EditorUtility.SetDirty(bezierSplineMulti);
-            bezierSplineMulti.splines[connectToSplineIndex].SetControlPoint(connectToPointIndex, fromPoint);
+            //bezierSplineMulti.splines[connectToSplineIndex].SetControlPoint(connectToPointIndex, fromPoint);
         }
     }
 
@@ -147,51 +191,12 @@ public class BezierSplineMultiInspector : Editor
             }
         }
 
+        canConnect = false;
         if (selectedPointIndex != -1 && selectedSplineIndex != -1 && selectedPointIndex % 3 == 0) 
         {
             ShowPossibleConnection(selectedPointIndex, selectedSplineIndex);
         }
-        //if (Event.current.type == EventType.MouseUp && Event.current.button == 0)
-        //{
-        //    //Debug.Log("Mouse Up");
-        //}
-
-        //string tempString = GUI.GetNameOfFocusedControl();
-
-        //bool temp = GUI.changed;
-        //GUI.changed = false;
-        //Vector3 modifiedPosition = Handles.PositionHandle(GetPosition(), Quaternion.identity);
-        //if (GUI.changed)
-        //{
-        //    Debug.Log("GUI changing " + tempString);
-        //}
-        //if (GUI.changed && !canConnect)
-        //{
-        //    Debug.Log("CAN'T");
-        //}
-        //if (!GUI.changed && canConnect)
-        //{
-        //    Debug.Log("WILL CONNECT");
-        //}
-        //GUI.changed |= temp;
-
-        //Debug.Log("Event: " + Event.current.type);
-
-        //if (Event.current.type == EventType.MouseDown)
-        //{
-        //    Debug.Log("Mouse Down");
-        //}
-        //HandleUtility.GUIPointToWorldRay(Event.current.mousePosition);
-
-        //if ((tempString == "xAxis" || tempString == "yAxis" || tempString == "zAxis") && GUIUtility.hotControl != 0)
-        //{
-        //    Debug.Log("dragging");
-        //}
-
-        //if ((tempString == "xAxis" || tempString == "yAxis" || tempString == "zAxis") && GUIUtility.hotControl == 0)
-        //{
-        //    Debug.Log("released");
-        //}
+        Repaint();
     }
 
     private Vector3 ShowPoint(int pointIndex, int splineIndex)
@@ -223,8 +228,10 @@ public class BezierSplineMultiInspector : Editor
                 spline.SetControlPoint(pointIndex, localSpacePoint);
 
                 // move other connected points
-                List<string> connectedPointsKeys = new List<string>();
-                if (bezierSplineMulti.HasConnections(selectedSplineIndex, selectedPointIndex, out connectedPointsKeys)) 
+                List<string> connectedPointsKeys = bezierSplineMulti.GetOtherPointsInNode(selectedSplineIndex + "-" + selectedPointIndex);
+                //if (bezierSplineMulti.HasConnections(selectedSplineIndex, selectedPointIndex, out connectedPointsKeys)) 
+                //Debug.Log("Key " + selectedSplineIndex + "-" + selectedPointIndex + ", other: " + connectedPointsKeys);
+                if (connectedPointsKeys.Count > 0)
                 {
                     float offset = 0f;
                     foreach (string key in connectedPointsKeys) 
@@ -299,14 +306,15 @@ public class BezierSplineMultiInspector : Editor
             }
         }
 
-        if (indexPointTo != -1 && indexSplineTo != -1) 
+        string key = splineIndex + "-" + pointIndex;
+        if (indexPointTo != -1 && indexSplineTo != -1) // && !bezierSplineMulti.IsPointAlreadyInNode(key)) 
         {
             Handles.DrawDottedLine(pointFrom, bezierSplineMulti.splines[indexSplineTo].GetControlPoint(indexPointTo), dotsSize);
             connectToPointIndex = indexPointTo;
             connectToSplineIndex = indexSplineTo;
             canConnect = true;
         }
-        Repaint();
+        //Repaint();
     }
 
 

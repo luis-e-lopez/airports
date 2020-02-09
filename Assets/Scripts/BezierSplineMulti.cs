@@ -1,8 +1,9 @@
 ﻿using UnityEngine;
 using System.Collections.Generic;
+using System.Linq;
 using System;
 
-public class BezierSplineMulti : MonoBehaviour {
+public class BezierSplineMulti : MonoBehaviour, ISerializationCallbackReceiver {
 
     [SerializeField]
     public BezierSpline[] splines;
@@ -15,13 +16,26 @@ public class BezierSplineMulti : MonoBehaviour {
     private int connectToPathIndex = -1;
     private int connectToPointIndex = -1;
 
-    private Dictionary<string, List<string>> connections = new Dictionary<string, List<string>>();
+    private Dictionary<string, List<string>> connections;
+
+    private List<string>[] nodes;
+
+    [SerializeField]
+    private List<string> _keys = new List<string>();
+
+    [SerializeField]
+    private List<string> _values = new List<string>();
+
+    [SerializeField]
+    private string[] _nodes;
 
     public bool Connect
     {
         get
         {
-            return ConnectionAlreadyExists();
+            if (connectToPathIndex != -1 && selectedPointIndex != -1)
+                return ConnectionAlreadyExists();
+            return IsPointAlreadyInNode(selectedPathIndex + "-" + selectedPointIndex);
         }
         set
         {
@@ -34,7 +48,16 @@ public class BezierSplineMulti : MonoBehaviour {
             connect = value;
             if (value) // wants to connect points
             {
-                AddPointToConnections(key, otherPointKey);
+                //AddPointToConnections(key, otherPointKey);
+                int nodeIndex = -1;
+                if (IsPointAlreadyInNode(otherPointKey, out nodeIndex)) 
+                {
+                    AddPointsToNode(new List<string>() { key }, nodeIndex);
+                } 
+                else
+                {
+                    AddPointsToNode(new List<string>() { key, otherPointKey }, nodeIndex);
+                }
 
                 // move the point to the same place as the other point
                 Vector3 cPoint = splines[connectToPathIndex].GetControlPoint(connectToPointIndex);
@@ -42,11 +65,145 @@ public class BezierSplineMulti : MonoBehaviour {
             }
             else // wants to disconnect points
             {
-                RemovePointFromConnections(key, otherPointKey);
+                //RemovePointFromConnections(key, otherPointKey);
+                RemovePointFromNode(key);   
 
                 // move the point down
                 Vector3 cPoint = splines[selectedPathIndex].GetControlPoint(selectedPointIndex);
                 splines[selectedPathIndex].SetControlPoint(selectedPointIndex, new Vector3(cPoint.x, cPoint.y - 0.5f, cPoint.z));
+            }
+        }
+    }
+
+    private bool ConnectionAlreadyExists()
+    {
+        if (nodes.Length == 0)
+            return false;
+
+        string key = selectedPathIndex + "-" + selectedPointIndex;
+        string otherPointKey = connectToPathIndex + "-" + connectToPointIndex;
+        int nodeIndex = -1;
+        if (IsPointAlreadyInNode(key, out nodeIndex)) 
+        {
+            int otherNodeIndex = -1;
+            if (IsPointAlreadyInNode(otherPointKey, out otherNodeIndex)) 
+            {
+                if (nodeIndex == otherNodeIndex)
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    public bool IsPointAlreadyInNode(string pointKey, out int nodeIndex) 
+    {
+        nodeIndex = -1;
+
+        if (nodes.Length == 0) 
+            return false;
+
+        for (int i = 0; i < nodes.Length; i++) 
+        { 
+            foreach (string key in nodes[i]) 
+            {
+                if (key.Equals(pointKey)) 
+                {
+                    nodeIndex = i;
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    public bool IsPointAlreadyInNode(string pointKey)
+    {
+        if (nodes.Length == 0)
+            return false;
+
+        for (int i = 0; i < nodes.Length; i++)
+        {
+            foreach (string key in nodes[i])
+            {
+                if (key.Equals(pointKey))
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    public List<string> GetOtherPointsInNode(string pointKey)
+    {
+
+        List<string> otherPoints = new List<string>();
+        foreach (List<string> keys in nodes) 
+        { 
+            if (keys.Contains(pointKey)) 
+            { 
+                foreach (string key in keys) 
+                { 
+                    if (!key.Equals(pointKey)) 
+                    {
+                        otherPoints.Add(key);
+                    }
+                }
+                return otherPoints;
+            }
+        }
+        return otherPoints;
+    }
+
+    public List<string> GetAllPointsInNode(int nodeIndex)
+    {
+
+        List<string> points = new List<string>();
+        List<string> keys = nodes[nodeIndex];
+        foreach (string key in keys)
+        {
+            points.Add(key);
+        }
+        return points;
+    }
+
+    public void AddPointsToNode(List<string> pointKeys, int nodeIndex) 
+    {
+        if (nodeIndex >= nodes.Length)
+            return;
+
+        if (nodeIndex == -1) 
+        {
+            Array.Resize(ref nodes, nodes.Length + 1);
+            nodes[nodes.Length - 1] = pointKeys;
+            return;
+        }
+
+        List<string> keys = nodes[nodeIndex];
+        foreach (string pointKey in pointKeys) 
+        { 
+            if (!keys.Contains(pointKey)) 
+            {
+                keys.Add(pointKey);
+            }
+        }
+    }
+
+    public void RemovePointFromNode(string pointKey) 
+    { 
+        for (int i = 0; i < nodes.Length; i++) 
+        {
+            List<string> keys = nodes[i];
+            if (keys.Contains(pointKey)) 
+            {
+                keys.Remove(pointKey);
+                if (keys.Count <= 1)
+                {
+                    var temp = new List<List<string>>(nodes);
+                    temp.RemoveAt(i);
+                    nodes = temp.ToArray();
+                }
+                return;
             }
         }
     }
@@ -63,6 +220,7 @@ public class BezierSplineMulti : MonoBehaviour {
                     return;
                 }
             }
+            //List<string> cPoints = connectedPoints.Select(p => p).ToList();
             connectedPoints.Add(otherPointKey);
             if (connections.TryGetValue(otherPointKey, out connectedPoints))
             {
@@ -129,26 +287,33 @@ public class BezierSplineMulti : MonoBehaviour {
         connectToPointIndex = toPointIndex;
     }
 
-    private bool ConnectionAlreadyExists() 
-    {
-        string key = selectedPathIndex + "-" + selectedPointIndex;
-        string otherPointKey = connectToPathIndex + "-" + connectToPointIndex;
-        List<string> connectedPoints = new List<string>();
-        if (connections.TryGetValue(key, out connectedPoints)) 
-        {
-            foreach (string point in connectedPoints)
-            {
-                if (point.Equals(otherPointKey))
-                {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
+    //private bool ConnectionAlreadyExists() 
+    //{
+    //    if (connections.Count == 0)
+    //        return false;
+
+    //    string key = selectedPathIndex + "-" + selectedPointIndex;
+    //    string otherPointKey = connectToPathIndex + "-" + connectToPointIndex;
+    //    List<string> connectedPoints = new List<string>();
+    //    //Debug.Log("Connected Points Length: " + connections.Count);
+    //    if (connections.TryGetValue(key, out connectedPoints)) 
+    //    {
+    //        foreach (string point in connectedPoints)
+    //        {
+    //            if (point.Equals(otherPointKey))
+    //            {
+    //                return true;
+    //            }
+    //        }
+    //    }
+    //    return false;
+    //}
 
     public bool HasConnections(int fromPath, int fromPoint, out List<string> connectedPoints) 
     {
+        //if (connections.Count == 0)
+            //return false;
+
         string key = fromPath + "-" + fromPoint;
         connectedPoints = new List<string>();
         if (connections.TryGetValue(key, out connectedPoints)) 
@@ -162,7 +327,7 @@ public class BezierSplineMulti : MonoBehaviour {
     {
         string[] indexes = key.Split('-');
         if (indexes.Length != 2)
-            return new Vector3(0f, 0f, 0f);
+            return new Vector3();
 
         try
         {
@@ -175,7 +340,7 @@ public class BezierSplineMulti : MonoBehaviour {
         {
             Debug.Log("Exception: " + e.Message);
         }
-        return new Vector3(0f, 0f, 0f);
+        return new Vector3();
     }
 
     public float GetSplineLength(int index) 
@@ -267,8 +432,67 @@ public class BezierSplineMulti : MonoBehaviour {
         }
     }
 
+    public void PrintNodes() 
+    {
+        if (nodes.Length == 0)
+            Debug.Log("No nodes");
+
+        for (int i = 0; i < nodes.Length; i++) 
+        {
+            Debug.Log("Node " + i + ": " + String.Join(",", nodes[i]));
+        }
+    }
+
     public void ClearConnections() 
     {
         connections.Clear();
+    }
+
+    public void ClearNodes()
+    {
+        Array.Resize(ref nodes, 0);
+    }
+
+    public void Reset() 
+    {
+        splines = new BezierSpline[0];
+        connections = new Dictionary<string, List<string>>();
+        nodes = new List<string>[0];
+    }
+
+    public void OnBeforeSerialize()
+    {
+        _keys.Clear();
+        _values.Clear();
+
+        foreach (var kvp in connections)
+        {
+            _keys.Add(kvp.Key);
+            _values.Add(String.Join(",", kvp.Value));
+        }
+
+        _nodes = new string[nodes.Length];
+
+        for (int i = 0; i < nodes.Length; i++) 
+        {
+            _nodes[i] = String.Join(",", nodes[i]);
+        }
+    }
+
+    public void OnAfterDeserialize()
+    {
+        connections = new Dictionary<string, List<string>>();
+        for (int i = 0; i != Math.Min(_keys.Count, _values.Count); i++) 
+        {
+            List<string> vals = _values[i].Split(',').OfType<string>().ToList();
+            connections.Add(_keys[i], vals);
+        }
+
+        nodes = new List<string>[_nodes.Length];
+
+        for (int i = 0; i < _nodes.Length; i++) 
+        { 
+            nodes[i] = _nodes[i].Split(',').OfType<string>().ToList();
+        }
     }
 }
