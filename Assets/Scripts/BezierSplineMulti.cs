@@ -29,6 +29,9 @@ public class BezierSplineMulti : MonoBehaviour, ISerializationCallbackReceiver {
     [SerializeField]
     private string[] _nodes;
 
+    [SerializeField]
+    private List<string> highlightPath;
+
     public bool Connect
     {
         get
@@ -73,6 +76,84 @@ public class BezierSplineMulti : MonoBehaviour, ISerializationCallbackReceiver {
                 splines[selectedPathIndex].SetControlPoint(selectedPointIndex, new Vector3(cPoint.x, cPoint.y - 0.5f, cPoint.z));
             }
         }
+    }
+
+    public bool SetAsNode 
+    {
+        get 
+        {
+            if (selectedPathIndex != -1 && selectedPointIndex != -1)
+                return IsSinglePointInNode(selectedPathIndex + "-" + selectedPointIndex);
+            return false;
+        }
+        set 
+        {
+            string key = selectedPathIndex + "-" + selectedPointIndex;
+            if (value) 
+            {
+                SetPointAsNode(key);
+            }
+            else
+            {
+                RemovePointFromNode(key);
+            }
+        }
+    }
+
+    public int GetNodesCount() 
+    {
+        return nodes.Length;
+    }
+
+    public Vector3[] GetNodesPositions()
+    {
+        Vector3[] pos = new Vector3[nodes.Length];
+
+        for (int i = 0; i < nodes.Length; i++) 
+        {
+            List<string> points = nodes[i];
+            string key = points.First();
+            Vector3 nodePos = GetPointFromKey(key);
+            pos[i] = nodePos;
+        }
+
+        return pos;
+    }
+
+    public List<NodeByPoint> GetNeighbourNodes(int nodeIndex) 
+    {
+        List<NodeByPoint> neighbourNodes = new List<NodeByPoint>();
+        List<string> pointsInNode = nodes[nodeIndex];
+
+        foreach (string key in pointsInNode) 
+        {
+            string[] indexes = key.Split('-');
+            int pathIndex = Int32.Parse(indexes[0]);
+            int pointIndex = Int32.Parse(indexes[1]);
+
+            // look in points after current point in node
+            for (int i = pointIndex + 3; i < splines[pathIndex].ControlPointCount; i+=3) 
+            {
+                int neighbourNodeIndex;
+                if (IsPointAlreadyInNode(pathIndex + "-" + i, out neighbourNodeIndex)) 
+                {
+                    neighbourNodes.Add(new NodeByPoint(neighbourNodeIndex, pathIndex, i, pointIndex));
+                    break;
+                }
+            }
+
+            // look in points before current point in node
+            for (int i = pointIndex - 3; i >= 0; i -= 3)
+            {
+                int neighbourNodeIndex;
+                if (IsPointAlreadyInNode(pathIndex + "-" + i, out neighbourNodeIndex))
+                {
+                    neighbourNodes.Add(new NodeByPoint(neighbourNodeIndex, pathIndex, i, pointIndex));
+                    break;
+                }
+            }
+        }
+        return neighbourNodes;
     }
 
     private bool ConnectionAlreadyExists()
@@ -206,6 +287,27 @@ public class BezierSplineMulti : MonoBehaviour, ISerializationCallbackReceiver {
                 return;
             }
         }
+    }
+
+    public void SetPointAsNode(string pointKey) 
+    {
+        if (IsPointAlreadyInNode(pointKey))
+            return;
+
+        Array.Resize(ref nodes, nodes.Length + 1);
+        nodes[nodes.Length - 1] = new List<string>() { pointKey };
+    }
+
+    public bool IsSinglePointInNode(string pointKey) 
+    {
+        int nodeIndex;
+        if (!IsPointAlreadyInNode(pointKey, out nodeIndex))
+            return false;
+
+        if (nodes[nodeIndex].Count == 1)
+            return true;
+
+        return false;
     }
 
     private void AddPointToConnections(string key, string otherPointKey) 
@@ -379,11 +481,17 @@ public class BezierSplineMulti : MonoBehaviour, ISerializationCallbackReceiver {
 
     public float GetSplineLengthBetweenTwoControlPoints(int splineIndex, int point1Index, int point2Index) 
     {
+        if (point1Index > point2Index) 
+        {
+            int temp = point1Index;
+            point1Index = point2Index;
+            point2Index = temp;
+        }
         if (point1Index % 3 != 0 || point2Index % 3 != 0)
             return -1f;
 
         float length = 0f;
-        float step = 0.01f;
+        float step = 0.001f;
         float progress = GetProgressAtControlPoint(splineIndex, point1Index);
         BezierSpline spline = splines[splineIndex];
         Vector3 prevPoint = spline.GetPoint(progress);
@@ -401,7 +509,39 @@ public class BezierSplineMulti : MonoBehaviour, ISerializationCallbackReceiver {
                 return length;
             }
         }
+        Debug.Log("Linea COMPLETA");
         return length;
+    }
+
+    public float GetSplineLengthFromNodeToControlPoint(int nodeIndex, int splineIndex, int pointIndex) 
+    {
+        List<string> points = GetAllPointsInNode(nodeIndex);
+        int firstPointIndex = -1;
+        foreach (string key in points) 
+        {
+            string[] indexes = key.Split('-');
+            int pathIndex = Int32.Parse(indexes[0]);
+            if (pathIndex == splineIndex) 
+            {
+                firstPointIndex = Int32.Parse(indexes[1]);
+                break;
+            }
+        }
+
+        if (firstPointIndex == -1)
+            return 0f;
+
+        return GetSplineLengthBetweenTwoControlPoints(splineIndex, firstPointIndex, pointIndex);
+    }
+
+    public void SetHighlightedPath(List<string> path) 
+    {
+        highlightPath = path;
+    }
+
+    public List<string> GetHighlightedPath() 
+    {
+        return highlightPath;
     }
 
     public float GetProgressAtControlPoint(int splineIndex, int pointIndex) 
@@ -493,6 +633,69 @@ public class BezierSplineMulti : MonoBehaviour, ISerializationCallbackReceiver {
         for (int i = 0; i < _nodes.Length; i++) 
         { 
             nodes[i] = _nodes[i].Split(',').OfType<string>().ToList();
+        }
+    }
+
+    public class Node 
+    {
+        private int index;
+        private List<string> points;
+
+        public Node(int index) 
+        {
+            this.index = index;
+            points = new List<string>();
+        }
+
+        public void AddPoint(int splineIndex, int pointIndex) 
+        {
+            points.Add(splineIndex + "-" + pointIndex);
+        }
+
+        public void AddPoints(List<string> points) 
+        {
+            this.points.AddRange(points);
+        }
+
+        public List<string> GetPoints() 
+        {
+            return points;
+        }
+    }
+
+    public class NodeByPoint
+    {
+        private int index;
+        private int splineIndex;
+        private int pointIndex;
+        private int fromPointIndex;
+
+        public NodeByPoint(int index, int splineIndex, int pointIndex, int fromPointIndex)
+        {
+            this.index = index;
+            this.splineIndex = splineIndex;
+            this.pointIndex = pointIndex;
+            this.fromPointIndex = fromPointIndex;
+        }
+
+        public int GetNodeIndex()
+        {
+            return index;
+        }
+
+        public int GetSplineIndex()
+        {
+            return splineIndex;
+        }
+
+        public int GetPointIndex()
+        {
+            return pointIndex;
+        }
+
+        public int GetFromPointIndex() 
+        {
+            return fromPointIndex;
         }
     }
 }

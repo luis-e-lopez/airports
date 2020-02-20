@@ -33,7 +33,12 @@ public class SplineWalker2 : MonoBehaviour {
 			}
 		}
 
-		if (goingForward) {
+        if (progress >= 0.95f) 
+        {
+            Debug.Log("Progress: " + progress);
+        }
+
+        if (goingForward) {
 			progress += Time.fixedDeltaTime * constantSpeed;
 			if (progress > 1f) {
 				if (mode == SplineWalkerMode.Once) {

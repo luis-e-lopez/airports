@@ -15,6 +15,8 @@ public class BezierSplineMultiInspector : Editor
     private int connectToPointIndex = -1;
     private int connectToSplineIndex = -1;
     private bool canConnect;
+    private bool canSetAsNode;
+    private bool canShowSetAsNodeToggle;
 
     private const float handleSize = 0.06f;
     private const float pickSize = 0.08f;
@@ -74,7 +76,7 @@ public class BezierSplineMultiInspector : Editor
 
         if (GUILayout.Button("Print length between two points"))
         {
-            int splineIndex = 1;
+            int splineIndex = 4;
             int point1Index = 0;
             int point2Index = 3;
             float length = bezierSplineMulti.GetSplineLengthBetweenTwoControlPoints(splineIndex, point1Index, point2Index);
@@ -93,6 +95,11 @@ public class BezierSplineMultiInspector : Editor
                 bezierSplineMulti.prepareForPossibleConnection(selectedSplineIndex, selectedPointIndex, connectToSplineIndex, connectToPointIndex);
                 ShowConnectionToggle();
             }
+        }
+
+        if (canShowSetAsNodeToggle) 
+        {
+            ShowSetAsNodeToggle();
         }
 
         serializedObject.ApplyModifiedProperties();
@@ -159,9 +166,22 @@ public class BezierSplineMultiInspector : Editor
         }
     }
 
+    private void ShowSetAsNodeToggle() 
+    {
+        EditorGUI.BeginChangeCheck();
+        bool setAsNode = EditorGUILayout.Toggle("Set As Node", bezierSplineMulti.SetAsNode);
+        if (EditorGUI.EndChangeCheck())
+        {
+            Undo.RecordObject(bezierSplineMulti, "Set As Node");
+            EditorUtility.SetDirty(bezierSplineMulti);
+            bezierSplineMulti.SetAsNode = setAsNode;
+        }
+    }
+
     private void OnSceneGUI()
     {
         bezierSplineMulti = target as BezierSplineMulti;
+        List<string> highlightedPath = bezierSplineMulti.GetHighlightedPath();
         for (int i = 0; i <bezierSplineMulti.splines.Length; i++) 
         {
             BezierSpline spline = bezierSplineMulti.splines[i];
@@ -175,6 +195,7 @@ public class BezierSplineMultiInspector : Editor
             handleRotation = Tools.pivotRotation == PivotRotation.Local ? spline.transform.rotation : Quaternion.identity;
 
             Vector3 p0 = ShowPoint(0, i);
+            int p0index = 0;
             for (int j = 1; j < spline.ControlPointCount; j += 3)
             {
                 Vector3 p1 = ShowPoint(j, i);//spline.transform.TransformPoint(spline.GetControlPoint(j));
@@ -185,9 +206,15 @@ public class BezierSplineMultiInspector : Editor
                 Handles.DrawLine(p0, p1);
                 Handles.DrawLine(p2, p3);
 
-                Handles.DrawBezier(p0, p3, p1, p2, Color.green, null, 5f);
+                Color bezierColor = Color.green;
+                if (highlightedPath != null && highlightedPath.Count > 0) 
+                {
+                    if (highlightedPath.Contains(i + "-" + p0index + "," + i + "-" + (j + 2)))
+                        bezierColor = Color.magenta;
+                }
+                Handles.DrawBezier(p0, p3, p1, p2, bezierColor, null, 5f);
                 p0 = p3;
-
+                p0index = j + 2;
             }
         }
 
@@ -196,7 +223,18 @@ public class BezierSplineMultiInspector : Editor
         {
             ShowPossibleConnection(selectedPointIndex, selectedSplineIndex);
         }
+        ShowNodesLabels();
         Repaint();
+    }
+
+    private void ShowNodesLabels() 
+    {
+        Vector3[] np = bezierSplineMulti.GetNodesPositions();
+
+        for (int i = 0; i < np.Length; i++) 
+        {
+            Handles.Label(new Vector3(np[i].x - .5f, np[i].y - .3f, np[i].z), "Node " + i);
+        }
     }
 
     private Vector3 ShowPoint(int pointIndex, int splineIndex)
@@ -213,13 +251,19 @@ public class BezierSplineMultiInspector : Editor
         {
             selectedPointIndex = pointIndex;
             selectedSplineIndex = splineIndex;
-            Debug.Log("Selected spline: " + selectedSplineIndex + ", selected point: " + selectedPointIndex + ", mod: " + (selectedPointIndex % 3));
+            canShowSetAsNodeToggle = pointIndex % 3 == 0 && !bezierSplineMulti.IsPointAlreadyInNode(splineIndex + "-" + pointIndex)
+                           || bezierSplineMulti.IsSinglePointInNode(splineIndex + "-" + pointIndex);
+            if (canShowSetAsNodeToggle)
+                bezierSplineMulti.prepareForPossibleConnection(splineIndex, pointIndex, -1, -1);
+            //Debug.Log("Selected spline: " + selectedSplineIndex + ", selected point: " + selectedPointIndex + ", mod: " + (selectedPointIndex % 3));
+
             Repaint();
         }
         if (selectedPointIndex == pointIndex && selectedSplineIndex == splineIndex)
         {
             EditorGUI.BeginChangeCheck();
             point = Handles.DoPositionHandle(point, handleRotation);
+            //Handles.Label(new Vector3(point.x - .2f, point.y - .2f, point.z), "Selected spline: " + selectedSplineIndex + ", selected point: " + selectedPointIndex);
             if (EditorGUI.EndChangeCheck())
             {
                 Undo.RecordObject(spline, "Move Point");

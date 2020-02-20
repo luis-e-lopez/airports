@@ -51,14 +51,14 @@ public class SplineWalker4 : MonoBehaviour
 
         Vector3 position = multi.splines[1].GetPoint(progress);
         if (jump)
-            position = multi.splines[0].GetPoint(progress);
-        Vector3 cPoint = multi.splines[0].GetControlPoint(0);
+            position = multi.splines[2].GetPoint(progress);
+        Vector3 cPoint = multi.splines[2].GetPoint(multi.GetProgressAtControlPoint(2, 6));
         float d = Vector3.Distance(cPoint, position);
         if (d < 0.05f && !jump) 
         {
             Debug.Log("Position x: " + position.x + ", y: " + position.y + ", distance: " + d);
             position = cPoint;
-            progress = 0f;
+            progress = multi.GetProgressAtControlPoint(2, 6);
             jump = true;
         }
         /*if (progress > 0.5f) {
@@ -72,7 +72,7 @@ public class SplineWalker4 : MonoBehaviour
             if (!jump)
                 transform.LookAt(position + multi.splines[1].GetDirection(progress), Vector3.forward);
             else
-                transform.LookAt(position + multi.splines[0].GetDirection(progress), Vector3.forward);
+                transform.LookAt(position + multi.splines[2].GetDirection(progress), Vector3.forward);
             transform.Rotate(90f, -90f, 0);
         }
     }
