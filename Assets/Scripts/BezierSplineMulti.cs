@@ -492,24 +492,17 @@ public class BezierSplineMulti : MonoBehaviour, ISerializationCallbackReceiver {
 
         float length = 0f;
         float step = 0.001f;
-        float progress = GetProgressAtControlPoint(splineIndex, point1Index);
+        float p1 = GetProgressAtControlPoint(splineIndex, point1Index);
+        float p2 = GetProgressAtControlPoint(splineIndex, point2Index);
         BezierSpline spline = splines[splineIndex];
-        Vector3 prevPoint = spline.GetPoint(progress);
-        Vector3 controlPoint = spline.GetControlPoint(point2Index);
-        for (float i = progress; i <= 1f; i += step)
+        Vector3 prevPoint = spline.GetPoint(p1);
+        for (float i = p1; i <= p2; i += step)
         {
             Vector3 nextPoint = spline.GetPoint(i);
             float sLength = Vector3.Distance(prevPoint, nextPoint);
             length += sLength;
             prevPoint = nextPoint;
-
-            float d = Vector3.Distance(nextPoint, controlPoint);
-            if (d < 0.02f)
-            {
-                return length;
-            }
         }
-        Debug.Log("Linea COMPLETA");
         return length;
     }
 
